@@ -13,13 +13,19 @@
         "ArmisOrg": {
             "type": "String",
             "metadata": {
-                "description": "Armis Organization Name"
+                "description": "Armis organization name"
+            }
+        },
+        "KeyvaultName": {
+            "type": "String",
+            "metadata" : {
+                "description" : "Name of the Key Vault that stores the Armis secret key"
             }
         },
         "SecretName": {
-            "type": "securestring",
+            "type": "String",
             "metadata": {
-                "description": "Name of Armis Secret Key Stored in Azure Key Vault"
+                "description": "Name of Key Vault Secret that contains the value of the Armis secret key"
             }
         }
     },
@@ -49,6 +55,10 @@
             "location": "[resourceGroup().location]",
             "properties": {
                 "displayName": "[parameters('PlaybookName')]",
+                "parameterValueType": "Alternative",
+                "alternativeParameterValues": {
+                    "vaultName": "[parameters('KeyvaultName')]"
+                },
                 "customParameterValues": {
                 },
                 "api": {
@@ -61,6 +71,9 @@
             "apiVersion": "2017-07-01",
             "name": "[parameters('PlaybookName')]",
             "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
             "dependsOn": [
                 "[resourceId('Microsoft.Web/connections', variables('azureloganalyticsdatacollector'))]",
                 "[resourceId('Microsoft.Web/connections', variables('keyvault'))]"
@@ -250,7 +263,7 @@
                                     }
                                 },
                                 "method": "get",
-                                "path": "[concat('/secrets/@{encodeURIComponent(', '''', parameters('SecretName'), '''', ')}/value')]"
+                                "path": "[concat('/secrets/@{encodeURIComponent(''', parameters('SecretName'), ''')}/value')]"
                             }
                         },
                         "HTTP_-_Get_Access_Token": {
@@ -347,7 +360,12 @@
                             "keyvault": {
                                 "connectionId": "[resourceId('Microsoft.Web/connections', variables('keyvault'))]",
                                 "connectionName": "[variables('keyvault')]",
-                                "id": "[concat('/subscriptions/', subscription().subscriptionId,'/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/keyvault')]"
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId,'/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/keyvault')]",
+                                "connectionProperties": {
+                                    "authentication": {
+                                        "type": "ManagedServiceIdentity"
+                                    }
+                                }
                             }
                         }
                     }
