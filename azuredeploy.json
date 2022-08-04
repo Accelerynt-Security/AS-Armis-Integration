@@ -16,7 +16,7 @@
                 "description": "Armis organization name"
             }
         },
-        "KeyvaultName": {
+        "KeyVaultName": {
             "type": "String",
             "metadata" : {
                 "description" : "Name of the Key Vault that stores the Armis secret key"
@@ -57,7 +57,7 @@
                 "displayName": "[parameters('PlaybookName')]",
                 "parameterValueType": "Alternative",
                 "alternativeParameterValues": {
-                    "vaultName": "[parameters('KeyvaultName')]"
+                    "vaultName": "[parameters('KeyVaultName')]"
                 },
                 "customParameterValues": {
                 },
@@ -105,14 +105,14 @@
                     "actions": {
                         "Condition": {
                             "actions": {
-                                "For_each": {
+                                "For_Each": {
                                     "foreach": "@body('Parse_JSON_-_Alerts')?['data']?['results']",
                                     "actions": {
                                         "Send_Data": {
                                             "runAfter": {},
                                             "type": "ApiConnection",
                                             "inputs": {
-                                                "body": "@{items('For_each')}",
+                                                "body": "@{items('For_Each')}",
                                                 "headers": {
                                                     "Log-Type": "ArmisIntegration",
                                                     "time-generated-field": "@{utcNow()}"
@@ -237,7 +237,7 @@
                                 }
                             },
                             "runAfter": {
-                                "Initialize_variable_-_Total": [
+                                "Initialize_Variable_-_Total": [
                                     "Succeeded"
                                 ]
                             },
@@ -299,7 +299,7 @@
 
                             }
                         },
-                        "Initialize_variable_-_Total": {
+                        "Initialize_Variable_-_Total": {
                             "runAfter": {
                                 "HTTP_-_Get_Alert_Count": [
                                     "Succeeded"
