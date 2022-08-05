@@ -12,7 +12,28 @@ This playbook is intended to be run from Microsoft Sentinel. It will ingest Armi
 ![Armis_Demo](Images/Armis_Demo.png)
 
 ### Set Up
-Add Armis secret key to azure key vault                                                                                                                       
+
+Before deploying this playbook, your Armis Secret Key, which will be used to obtain access tokens via the Armis API, must be stored in an Azure Key Vault.
+
+Navigate to the Azure Key Vaults page: https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.KeyVault%2Fvaults
+
+Navigate to an existing Key Vault or create a new one. From the Key Vault overview page, click the "**Secrets**" menu option, found under the "**Settings**" section.
+
+![Armis_SetUp_1](Images/Armis_SetUp_1.png)
+
+Click "**Generate/Import**".
+
+![Armis_SetUp_2](Images/Armis_SetUp_2.png)
+
+Choose a name for the secret and enter the Armis Secret Key in the "**Value**" field. All other settings can be left as is. 
+
+![Armis_SetUp_3](Images/Armis_SetUp_3.png)
+
+Click "**Create**". 
+
+Once your secret has been added to the vault, navigate to the "**Access policies**" menu option, also found under the "**Settings**" section on the Key Vault page menu. Leave this page open, as you will need to return to it once the playbook has been deployed. See https://github.com/Accelerynt-Security/AS-Armis-Integration/edit/main/README.md#granting-access-to-azure-key-vault.
+
+![Armis_SetUp_4](Images/Armis_SetUp_4.png)
                                                                                                  
 #
 ### Deployment                                                                                                         
@@ -85,12 +106,25 @@ Here you can copy your "**Workspace ID**" and either your "**Primary key**" or "
 
 ![Armis_Deploy_10](Images/Armis_Deploy_10.png)
 
-Returning to the "**Logic Apps Designer**" (edit) screen, paste the  "**Workspace ID**" in the corresponding field and either your "**Primary key**" or "**Secondary key**" value in the "**Workspace Key**" field. Then click "**Update**".
+Returning to the "**Logic Apps Designer**" (edit) screen, paste the “**Workspace ID**" in the corresponding field and either your "**Primary key**" or "**Secondary key**" value in the "**Workspace Key**" field. Then click "**Update**".
 
 ![Armis_Deploy_11](Images/Armis_Deploy_11.png)
 
 #
-### Granting access to Azure Key Vault
+### Granting Access to Azure Key Vault
 
-connection name: AS-Armis-Integration
-Perms: get
+Before the Logic App can run successfully, the keyvault connection created during deployment must be granted access to the Key Vault storing your Armis Secret Key.
+
+From the Key Vault "**Access policies**" page, click "**Add Access Policy**".
+
+![Armis_Access_1](Images/Armis_Access_1.png)
+
+Select the "**Get**" checkbox in the "**Secret permissions**" list field. Then click the blue "**None selected**" text next to the "**Select principal**" field.
+
+Paste "**AS-Armis-Integration**" into the principal search box and click the option that appears. Click "**Select**" towards the bottom of the page.
+
+![Armis_Access_2](Images/Armis_Access_2.png)
+
+Click "**Add**".
+
+![Armis_Access_3](Images/Armis_Access_3.png)
