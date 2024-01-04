@@ -1,0 +1,376 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "metadata": {
+        "comments": "This playbook is intended to be run from Microsoft Sentinel. It will ingest Armis Alerts on a rolling schedule and add them to the Custom Logs in your Microsoft Log Analytics Workspace.",
+        "author": "Accelerynt"
+    },
+    "parameters": {
+        "PlaybookName": {
+            "defaultValue": "AS-Armis-Integration",
+            "type": "string"
+        },
+        "ArmisOrg": {
+            "type": "string",
+            "metadata": {
+                "description": "Armis organization name"
+            }
+        },
+        "KeyVaultName": {
+            "type": "string",
+            "metadata" : {
+                "description" : "Name of the Key Vault that stores the Armis secret key"
+            }
+        },
+        "SecretName": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of Key Vault Secret that contains the value of the Armis secret key"
+            }
+        }
+    },
+    "variables": {
+        "azureloganalyticsdatacollector": "[concat('azureloganalyticsdatacollector-', parameters('PlaybookName'))]",
+        "keyvault": "[concat('keyvault-', parameters('PlaybookName'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "[variables('azureloganalyticsdatacollector')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "displayName": "[parameters('PlaybookName')]",
+                "customParameterValues": {
+                },
+                "api": {
+                    "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureloganalyticsdatacollector')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "[variables('keyvault')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "displayName": "[parameters('PlaybookName')]",
+                "parameterValueType": "Alternative",
+                "alternativeParameterValues": {
+                    "vaultName": "[parameters('KeyVaultName')]"
+                },
+                "customParameterValues": {
+                },
+                "api": {
+                    "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/keyvault')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('PlaybookName')]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/connections', variables('azureloganalyticsdatacollector'))]",
+                "[resourceId('Microsoft.Web/connections', variables('keyvault'))]"
+            ],
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "Recurrence": {
+                            "recurrence": {
+                                "frequency": "Day",
+                                "interval": 1
+                            },
+                            "evaluatedRecurrence": {
+                                "frequency": "Day",
+                                "interval": 1
+                            },
+                            "type": "Recurrence"
+                        }
+                    },
+                    "actions": {
+                        "Condition": {
+                            "actions": {
+                                "For_Each": {
+                                    "foreach": "@body('Parse_JSON_-_Alerts')?['data']?['results']",
+                                    "actions": {
+                                        "Send_Data": {
+                                            "runAfter": {},
+                                            "type": "ApiConnection",
+                                            "inputs": {
+                                                "body": "@{items('For_Each')}",
+                                                "headers": {
+                                                    "Log-Type": "ArmisIntegration",
+                                                    "time-generated-field": "@{utcNow()}"
+                                                },
+                                                "host": {
+                                                    "connection": {
+                                                        "name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+                                                    }
+                                                },
+                                                "method": "post",
+                                                "path": "/api/logs"
+                                            }
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "Parse_JSON_-_Alerts": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Foreach"
+                                },
+                                "HTTP_-_Get_Alerts": {
+                                    "runAfter": {},
+                                    "type": "Http",
+                                    "inputs": {
+                                        "headers": {
+                                            "Authorization": "@body('Parse_JSON')?['data']?['access_token']"
+                                        },
+                                        "method": "GET",
+                                        "uri": "[concat('https://', parameters('ArmisOrg'), '.armis.com/api/v1/search/?aql=in:alerts%20timeFrame:\"1%20days\"&orederBy=time:desc&from=0&length=', '@{variables(''Total'')}')]"
+                                    }
+                                },
+                                "Parse_JSON_-_Alerts": {
+                                    "runAfter": {
+                                        "HTTP_-_Get_Alerts": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ParseJson",
+                                    "inputs": {
+                                        "content": "@body('HTTP_-_Get_Alerts')",
+                                        "schema": {
+                                            "properties": {
+                                                "data": {
+                                                    "properties": {
+                                                        "count": {
+                                                            "type": "integer"
+                                                        },
+                                                        "next": {
+                                                            "type": "integer"
+                                                        },
+                                                        "prev": {},
+                                                        "results": {
+                                                            "items": {
+                                                                "properties": {
+                                                                    "activityUUIDs": {
+                                                                        "items": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "type": "array"
+                                                                    },
+                                                                    "alertId": {
+                                                                        "type": "integer"
+                                                                    },
+                                                                    "connectionIds": {
+                                                                        "type": "array"
+                                                                    },
+                                                                    "description": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "deviceIds": {
+                                                                        "items": {
+                                                                            "type": "integer"
+                                                                        },
+                                                                        "type": "array"
+                                                                    },
+                                                                    "severity": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "status": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "time": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "title": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "type": {
+                                                                        "type": "string"
+                                                                    }
+                                                                },
+                                                                "required": [
+                                                                    "activityUUIDs",
+                                                                    "alertId",
+                                                                    "connectionIds",
+                                                                    "description",
+                                                                    "deviceIds",
+                                                                    "severity",
+                                                                    "status",
+                                                                    "time",
+                                                                    "title",
+                                                                    "type"
+                                                                ],
+                                                                "type": "object"
+                                                            },
+                                                            "type": "array"
+                                                        },
+                                                        "total": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
+                                                "success": {
+                                                    "type": "boolean"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_Variable_-_Total": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "expression": {
+                                "and": [
+                                    {
+                                        "greater": [
+                                            "@variables('Total')",
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            "type": "If"
+                        },
+                        "Get_Secret": {
+                            "runAfter": {},
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['keyvault']['connectionId']"
+                                    }
+                                },
+                                "method": "get",
+                                "path": "[concat('/secrets/@{encodeURIComponent(''', parameters('SecretName'), ''')}/value')]"
+                            }
+                        },
+                        "HTTP_-_Get_Access_Token": {
+                            "runAfter": {
+                                "Get_Secret": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Http",
+                            "inputs": {
+                                "body": "secret_key=@{body('Get_Secret')?['value']}",
+                                "headers": {
+                                    "accept": "application/json",
+                                    "content-type": "application/x-www-form-urlencoded"
+                                },
+                                "method": "POST",
+                                "uri": "[concat('https://', parameters('ArmisOrg'), '.armis.com/api/v1/access_token/')]"
+                            }
+                        },
+                        "HTTP_-_Get_Alert_Count": {
+                            "runAfter": {
+                                "Parse_JSON": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Http",
+                            "inputs": {
+                                "headers": {
+                                    "Authorization": "@body('Parse_JSON')?['data']?['access_token']"
+                                },
+                                "method": "GET",
+                                "uri": "[concat('https://', parameters('ArmisOrg'), '.armis.com/api/v1/search/?aql=in:alerts%20timeFrame:\"1%20days\"&orederBy=time:desc&from=0&length=1')]"
+
+                            }
+                        },
+                        "Initialize_Variable_-_Total": {
+                            "runAfter": {
+                                "HTTP_-_Get_Alert_Count": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "Total",
+                                        "type": "integer",
+                                        "value": "@body('HTTP_-_Get_Alert_Count')?['data']?['total']"
+                                    }
+                                ]
+                            }
+                        },
+                        "Parse_JSON": {
+                            "runAfter": {
+                                "HTTP_-_Get_Access_Token": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "ParseJson",
+                            "inputs": {
+                                "content": "@body('HTTP_-_Get_Access_Token')",
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "properties": {
+                                                "access_token": {
+                                                    "type": "string"
+                                                },
+                                                "expiration_utc": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "sucess": {
+                                            "type": "boolean"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "azureloganalyticsdatacollector": {
+                                "connectionId": "[resourceId('Microsoft.Web/connections', variables('azureloganalyticsdatacollector'))]",
+                                "connectionName": "[variables('azureloganalyticsdatacollector')]",
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId,'/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureloganalyticsdatacollector')]"
+                            },
+                            "keyvault": {
+                                "connectionId": "[resourceId('Microsoft.Web/connections', variables('keyvault'))]",
+                                "connectionName": "[variables('keyvault')]",
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId,'/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/keyvault')]",
+                                "connectionProperties": {
+                                    "authentication": {
+                                        "type": "ManagedServiceIdentity"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
